@@ -93,6 +93,13 @@ android {
             keyPassword 'android'
         }
     }
+    flavorDimensions "react-native-camera"
+    productFlavors {
+        general {
+            dimension "react-native-camera"
+        }
+       
+    }
     buildTypes {
         debug {
             signingConfig signingConfigs.debug
@@ -105,11 +112,15 @@ android {
             proguardFiles getDefaultProguardFile("proguard-android.txt"), "proguard-rules.pro"
         }
     }
+    defaultConfig {
+        missingDimensionStrategy 'react-native-camera', 'general' // or 'mlkit' if you prefer
+    }
 }
 
 dependencies {
     // The version of react-native is set by the React Native Gradle Plugin
     implementation("com.facebook.react:react-android")
+    //implementation 'com.google.mlkit:barcode-scanning:17.2.0'
 
     if (hermesEnabled.toBoolean()) {
         implementation("com.facebook.react:hermes-android")

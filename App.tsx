@@ -1,13 +1,15 @@
-import React, { useRef, useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
   TouchableOpacity,
   FlatList,
-  Keyboard,
-  TextInput,
   ActivityIndicator,
+  PermissionsAndroid,
+  Platform,
 } from 'react-native';
+import { Camera, useCameraDevices, useFrameProcessor } from 'react-native-vision-camera';
+import { runOnJS } from 'react-native-reanimated';
 import styles from './App.styles';
 
 function App(): React.JSX.Element {
@@ -16,8 +18,32 @@ function App(): React.JSX.Element {
   const [messages, setMessages] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const inputRef = useRef<TextInput>(null);
-  const [test,settest] = useState("text test")
+  const [hasPermission, setHasPermission] = useState(false);
+  const devices = useCameraDevices();
+  const device = devices.back;
+
+  useEffect(() => {
+    checkPermission();
+  }, []);
+
+  const checkPermission = async () => {
+    if (Platform.OS === 'android') {
+      const granted = await PermissionsAndroid.request(
+        PermissionsAndroid.PERMISSIONS.CAMERA,
+        {
+          title: 'Camera Permission',
+          message: 'App needs camera permission to scan barcodes',
+          buttonNeutral: 'Ask Me Later',
+          buttonNegative: 'Cancel',
+          buttonPositive: 'OK',
+        }
+      );
+      setHasPermission(granted === PermissionsAndroid.RESULTS.GRANTED);
+    } else {
+      const permission = await Camera.requestCameraPermission();
+      setHasPermission(permission === 'authorized');
+    }
+  };
 
   const fetchMessages = (code: string) => [
     `Broadcast for ${code} - 1`,
@@ -25,27 +51,45 @@ function App(): React.JSX.Element {
     `Broadcast for ${code} - 3`,
   ];
 
-  // Only update barcode as user scans/types
-  const handleBarcodeInput = (text: string) => {
-    setBarcode(text);
-    setError('');
+  const handleBarcodeDetected = (code: string) => {
+    if (code && code !== barcode) {
+      setBarcode(code);
+      setError('');
+      setLoading(true);
+      setTimeout(() => {
+        setScanning(false);
+        setMessages(fetchMessages(code));
+        setLoading(false);
+      }, 600);
+    }
   };
 
-  // Called when "Scan Complete" is pressed
-  const handleScanComplete = () => {
-    if (!barcode.trim()) {
-      setError('Please scan a barcode before continuing.');
-      return;
+  const frameProcessor = useFrameProcessor((frame) => {
+    'worklet';
+    // Here you would implement the barcode detection logic
+    // This is a placeholder - you'll need to implement the actual barcode detection
+    // using a native module or a library like MLKit
+    const detectedCode = ''; // Replace with actual barcode detection
+    if (detectedCode) {
+      runOnJS(handleBarcodeDetected)(detectedCode);
     }
-    setError('');
-    setLoading(true);
-    setTimeout(() => {
-      setScanning(false);
-      setMessages(fetchMessages(barcode));
-      setLoading(false);
-      Keyboard.dismiss();
-    }, 600);
-  };
+  }, []);
+
+  if (!hasPermission) {
+    return (
+      <View style={styles.container}>
+        <Text style={styles.title}>Camera Permission Required</Text>
+        <Text style={styles.helper}>Please grant camera permission to scan barcodes</Text>
+        <TouchableOpacity
+          style={styles.button}
+          onPress={checkPermission}
+          activeOpacity={0.8}
+        >
+          <Text style={styles.buttonText}>Grant Permission</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
 
   return (
     <View style={styles.container}>
@@ -60,7 +104,6 @@ function App(): React.JSX.Element {
               setBarcode('');
               setMessages([]);
               setError('');
-              setTimeout(() => inputRef.current?.focus(), 100);
             }}
             activeOpacity={0.8}
             disabled={loading}
@@ -70,54 +113,41 @@ function App(): React.JSX.Element {
         </>
       ) : scanning ? (
         <View style={{ flex: 1 }}>
-          {/* Main content centered */}
-          <View style={{ flex: 1, justifyContent: 'center' }}>
+          {device && (
+            <Camera
+              style={{ flex: 1 }}
+              device={device}
+              isActive={true}
+              frameProcessor={frameProcessor}
+              frameProcessorFps={5}
+            />
+          )}
+          <View style={styles.overlay}>
             <View style={styles.magnifierIcon}>
               <View style={styles.magnifierCircle} />
               <View style={styles.magnifierHandle} />
             </View>
             <Text style={styles.title}>Scanning...</Text>
-            <Text style={styles.helper}>Scan the barcode now.</Text>
-            {/* Hidden TextInput for barcode input */}
-            <TextInput
-              ref={inputRef}
-              style={{ height: 0, width: 0, opacity: 0, position: 'absolute' }}
-              value={barcode}
-              onChangeText={handleBarcodeInput}
-              blurOnSubmit={false}
-              autoCapitalize="none"
-              autoCorrect={false}
-              keyboardType="default"
-              returnKeyType="done"
-              showSoftInputOnFocus={false}
-            />
-            {/* Scan Complete button */}
-            <TouchableOpacity
-              style={[styles.button, { marginTop: 20 }]}
-              onPress={handleScanComplete}
-              activeOpacity={0.8}
-            >
-              <Text style={styles.buttonText}>Scan Complete</Text>
-            </TouchableOpacity>
+            <Text style={styles.helper}>Point camera at barcode</Text>
             {error ? (
               <Text style={{ color: 'red', alignSelf: 'center', marginTop: 8 }}>{error}</Text>
             ) : null}
             {loading && <ActivityIndicator size="large" color="#007bff" style={{ marginTop: 20 }} />}
           </View>
-          {/* Left arrow button to go home */}
           <TouchableOpacity
             style={styles.prevButton}
             onPress={() => {
-                setScanning(false);
-                setBarcode('');
-                setMessages([]);
-                setError('');
+              setScanning(false);
+              setBarcode('');
+              setMessages([]);
+              setError('');
             }}
             activeOpacity={0.8}
           >
             <Text style={styles.prevButtonText}>← Home</Text>
           </TouchableOpacity>
         </View>
+      
       ) : (
         <>
           <Text style={styles.checkmark}>✔</Text>
